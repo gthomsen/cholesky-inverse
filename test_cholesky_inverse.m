@@ -55,37 +55,27 @@ end
 
 % calling without output arguments is valid.
 try
-    R_single
-    R_inv_single      = cholesky_inverse( R_single );
+    verify_inversion( R_single );
 
-    U                 = chol( R_single );
-    U_inv             = U \ eye( size( R_single ) );
-    R_inv_single_real = U_inv*U_inv';
-
-    % XXX: this tolerance is awfully large.
-    close_enough = (abs( R_inv_single_real * R_single ) - single( eye( size( R_single ) ) )) < 1e-5;
-    assert( all( close_enough(:) ) );
-    close_enough = (R_inv_single_real - R_inv_single) < 1e-5;
-    assert( all( close_enough(:) ) );
-%    assert( abs( R_inv_single_real * R_single ), single( eye( size( R_single ) ) ), -5e-6 );
-%    assert( R_inv_single_real, R_inv_single, -1e-6 );
-catch me
+catch
     status = false;
-    getReport( me )
+%    getReport( me )
 %    msg = lasterror.message;
 %    disp( msg);
     keyboard
     error( 'cholesky_inverse() failed to execute with a single precision, Hermitian matrix.' );
 end
 
-keyboard
+disp( 'Single complex worked' )
 
 try
-    cholesky_inverse( R_double );
+    verify_inversion( R_double );
 catch
     status = false;
     error( 'cholesky_inverse() failed to execute with a double precision, Hermitian matrix.' );
 end
+
+disp( 'Double complex worked' )
 
 try
     cholesky_inverse( S_single );
@@ -94,12 +84,16 @@ catch
     error( 'cholesky_inverse() failed to execute with a single precision, symmetric matrix.' );
 end
 
+disp( 'Single real worked' )
+
 try
     cholesky_inverse( S_double );
 catch
     status = false;
     error( 'cholesky_inverse() failed to execute with a double precision, symmetrix matrix.' );
 end
+
+keyboard
 
 % calling with invalid parameters is invalid.
 for type_str = { 'int8', 'int16', 'int32', 'SINGLE', 'DOUBLE', 'FLOAT32', 'FLOAT64' }
@@ -116,3 +110,29 @@ R_inv_single = cholesky_inverse( R_single, 'single' )
 R_inv_single = cholesky_inverse( R_single, 'double' );
 
 return
+
+function verify_inversion( R )
+
+I = eye( size( R ), class( R ) );
+
+% invert using the MEX object.
+R_inv = cholesky_inverse( R );
+
+% invert using the built-in Cholesky decomposition routine and
+% back-substitution.
+U          = chol( R );
+U_inv      = U \ I;
+R_inv_real = U_inv * U_inv';
+
+% XXX: this tolerance is awfully large.  should be set based on the class.
+close_enough = (abs( R_inv_real * R ) - I)  < 1e-5;
+assert( all( close_enough(:) ) );
+
+close_enough = (R_inv_real - R_inv) < 1e-5;
+assert( all( close_enough(:) ) );
+%    assert( abs( R_inv_single_real * R_single ), single( eye( size( R_single ) ) ), -5e-6 );
+%    assert( R_inv_single_real, R_inv_single, -1e-6 );
+
+return
+
+%function
