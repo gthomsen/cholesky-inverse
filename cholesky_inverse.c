@@ -261,72 +261,115 @@ void copy_contiguous_to_interleaved( void * __restrict__ real_buffer,
     /* are we simply splitting one buffer into to? */
     if( source_type == destination_type )
     {
-        if( source_type == mxDOUBLE_CLASS )
+        if( imaginary_buffer != NULL )
         {
-            /* doubles to doubles. */
-            double * __restrict__ real        = (double *)real_buffer;
-            double * __restrict__ imaginary   = (double *)imaginary_buffer;
-            double * __restrict__ interleaved = (double *)interleaved_buffer;
-
-            for( column_index = 0; column_index < n; column_index++ )
+            if( source_type == mxDOUBLE_CLASS )
             {
-                int mirror_index = column_index * 2;
+                /* complex doubles to complex doubles. */
+                double * __restrict__ real        = (double *)real_buffer;
+                double * __restrict__ imaginary   = (double *)imaginary_buffer;
+                double * __restrict__ interleaved = (double *)interleaved_buffer;
 
-                /* upper triangle -> copy */
-                for( row_index = 0;
-                     row_index < column_index;
-                     row_index++, element_index += 2, real_index++ )
+                for( column_index = 0; column_index < n; column_index++ )
                 {
-                    real[real_index]      = interleaved[element_index];
-                    imaginary[real_index] = interleaved[element_index + 1];
+                    int mirror_index = column_index * 2;
 
-                    mirror_index += n * 2;
+                    /* upper triangle -> copy */
+                    for( row_index = 0;
+                         row_index < column_index;
+                         row_index++, element_index += 2, mirror_index += n * 2, real_index++ )
+                    {
+                        real[real_index]      = interleaved[element_index];
+                        imaginary[real_index] = interleaved[element_index + 1];
+                    }
+
+                    /* lower triangle -> conjugate transpose */
+                    for( ;
+                         row_index < n;
+                         row_index++, element_index += 2, mirror_index += n * 2, real_index++ )
+                    {
+                        real[real_index]      =  interleaved[mirror_index];
+                        imaginary[real_index] = -interleaved[mirror_index + 1];
+                    }
                 }
+            }
+            else
+            {
+                /* complex floats to complex floats. */
+                float * __restrict__ real        = (float *)real_buffer;
+                float * __restrict__ imaginary   = (float *)imaginary_buffer;
+                float * __restrict__ interleaved = (float *)interleaved_buffer;
 
-                /* lower triangle -> conjugate transpose */
-                for( ;
-                     row_index < n;
-                     row_index++, element_index += 2, real_index++ )
+                for( column_index = 0; column_index < n; column_index++ )
                 {
-                    real[real_index]      =  interleaved[mirror_index];
-                    imaginary[real_index] = -interleaved[mirror_index + 1];
+                    int mirror_index = column_index * 2;
 
-                    mirror_index += n * 2;
+                    /* upper triangle -> copy */
+                    for( row_index = 0;
+                         row_index < column_index;
+                         row_index++, element_index += 2, mirror_index += n * 2, real_index++ )
+                    {
+                        real[real_index]      = interleaved[element_index];
+                        imaginary[real_index] = interleaved[element_index + 1];
+                    }
+
+                    /* lower triangle -> conjugate transpose */
+                    for( ;
+                         row_index < n;
+                         row_index++, element_index += 2, mirror_index += n * 2, real_index++ )
+                    {
+                        real[real_index]      =  interleaved[mirror_index];
+                        imaginary[real_index] = -interleaved[mirror_index + 1];
+                    }
                 }
             }
         }
         else
         {
-            /* floats to floats. */
-            float * __restrict__ real        = (float *)real_buffer;
-            float * __restrict__ imaginary   = (float *)imaginary_buffer;
-            float * __restrict__ interleaved = (float *)interleaved_buffer;
-
-
-            for( column_index = 0; column_index < n; column_index++ )
+            if( source_type == mxDOUBLE_CLASS )
             {
-                int mirror_index = column_index * 2;
+                /* real doubles to real doubles. */
+                double * __restrict__ real        = (double *)real_buffer;
+                double * __restrict__ interleaved = (double *)interleaved_buffer;
 
-                /* upper triangle -> copy */
-                for( row_index = 0;
-                     row_index < column_index;
-                     row_index++, element_index += 2, real_index++ )
+                for( column_index = 0; column_index < n; column_index++ )
                 {
-                    real[real_index]      = interleaved[element_index];
-                    imaginary[real_index] = interleaved[element_index + 1];
+                    int mirror_index = column_index;
 
-                    mirror_index += n * 2;
+                    /* upper triangle -> copy */
+                    for( row_index = 0;
+                         row_index < column_index;
+                         row_index++, element_index++, mirror_index += n, real_index++ )
+                        real[real_index] = interleaved[element_index];
+
+                    /* lower triangle -> transpose */
+                    for( ;
+                         row_index < n;
+                         row_index++, element_index++, mirror_index += n, real_index++ )
+                        real[real_index] = interleaved[mirror_index];
                 }
+            }
+            else
+            {
+                /* real floats to floats. */
+                float * __restrict__ real        = (float *)real_buffer;
+                float * __restrict__ interleaved = (float *)interleaved_buffer;
 
-                /* lower triangle -> conjugate transpose */
-                for( ;
-                     row_index < n;
-                     row_index++, element_index += 2, real_index++ )
+                for( column_index = 0; column_index < n; column_index++ )
                 {
-                    real[real_index]      =  interleaved[mirror_index];
-                    imaginary[real_index] = -interleaved[mirror_index + 1];
+                    int mirror_index = column_index;
 
-                    mirror_index += n * 2;
+                    /* upper triangle -> copy */
+                    for( row_index = 0;
+                         row_index < column_index;
+                         row_index++, element_index++, mirror_index += n, real_index++ )
+                        real[real_index] = interleaved[element_index];
+
+                    /* lower triangle -> transpose */
+                    for( ;
+                         row_index < n;
+                         row_index++, element_index++, mirror_index += n, real_index++ )
+                        real[real_index] = interleaved[mirror_index];
                 }
             }
         }
@@ -335,71 +378,115 @@ void copy_contiguous_to_interleaved( void * __restrict__ real_buffer,
        source? */
     else
     {
-        if( source_type == mxDOUBLE_CLASS )
+        if( imaginary_buffer != NULL )
         {
-            /* doubles to floats. */
-            float * __restrict__  real        = (float *)real_buffer;
-            float * __restrict__  imaginary   = (float *)imaginary_buffer;
-            double * __restrict__ interleaved = (double *)interleaved_buffer;
-
-            for( column_index = 0; column_index < n; column_index++ )
+            if( source_type == mxDOUBLE_CLASS )
             {
-                int mirror_index = column_index * 2;
+                /* complex doubles to complex floats. */
+                float * __restrict__  real        = (float *)real_buffer;
+                float * __restrict__  imaginary   = (float *)imaginary_buffer;
+                double * __restrict__ interleaved = (double *)interleaved_buffer;
 
-                /* upper triangle -> copy */
-                for( row_index = 0;
-                     row_index < column_index;
-                     row_index++, element_index += 2, real_index++ )
+                for( column_index = 0; column_index < n; column_index++ )
                 {
-                    real[real_index]      = interleaved[element_index];
-                    imaginary[real_index] = interleaved[element_index + 1];
+                    int mirror_index = column_index * 2;
 
-                    mirror_index += n * 2;
+                    /* upper triangle -> copy */
+                    for( row_index = 0;
+                         row_index < column_index;
+                         row_index++, element_index += 2, mirror_index += 2, real_index++ )
+                    {
+                        real[real_index]      = interleaved[element_index];
+                        imaginary[real_index] = interleaved[element_index + 1];
+                    }
+
+                    /* lower triangle -> conjugate transpose */
+                    for( ;
+                         row_index < n;
+                         row_index++, element_index += 2, mirror_index += 2, real_index++ )
+                    {
+                        real[real_index]      =  interleaved[mirror_index];
+                        imaginary[real_index] = -interleaved[mirror_index + 1];
+                    }
                 }
+            }
+            else
+            {
+                /* complex floats to complex doubles. */
+                double * __restrict__ real        = (double *)real_buffer;
+                double * __restrict__ imaginary   = (double *)imaginary_buffer;
+                float * __restrict__  interleaved = (float *)interleaved_buffer;
 
-                /* lower triangle -> conjugate transpose */
-                for( ;
-                     row_index < n;
-                     row_index++, element_index += 2, real_index++ )
+                for( column_index = 0; column_index < n; column_index++ )
                 {
-                    real[real_index]      =  interleaved[mirror_index];
-                    imaginary[real_index] = -interleaved[mirror_index + 1];
+                    int mirror_index = column_index * 2;
 
-                    mirror_index += n * 2;
+                    /* upper triangle -> copy */
+                    for( row_index = 0;
+                         row_index < column_index;
+                         row_index++, element_index += 2, mirror_index += n * 2, real_index++ )
+                    {
+                        real[real_index]      = interleaved[element_index];
+                        imaginary[real_index] = interleaved[element_index + 1];
+                    }
+
+                    /* lower triangle -> conjugate transpose */
+                    for( ;
+                         row_index < n;
+                         row_index++, element_index += 2, mirror_index += n * 2, real_index++ )
+                    {
+                        real[real_index]      =  interleaved[mirror_index];
+                        imaginary[real_index] = -interleaved[mirror_index + 1];
+                    }
                 }
             }
         }
         else
         {
-            /* floats to doubles. */
-            double * __restrict__ real        = (double *)real_buffer;
-            double * __restrict__ imaginary   = (double *)imaginary_buffer;
-            float * __restrict__  interleaved = (float *)interleaved_buffer;
-
-            for( column_index = 0; column_index < n; column_index++ )
+            if( source_type == mxDOUBLE_CLASS )
             {
-                int mirror_index = column_index * 2;
+                /* real doubles to real floats. */
+                float * __restrict__  real        = (float *)real_buffer;
+                double * __restrict__ interleaved = (double *)interleaved_buffer;
 
-                /* upper triangle -> copy */
-                for( row_index = 0;
-                     row_index < column_index;
-                     row_index++, element_index += 2, real_index++ )
+                for( column_index = 0; column_index < n; column_index++ )
                 {
-                    real[real_index]      = interleaved[element_index];
-                    imaginary[real_index] = interleaved[element_index + 1];
+                    int mirror_index = column_index;
 
-                    mirror_index += n * 2;
+                    /* upper triangle -> copy */
+                    for( row_index = 0;
+                         row_index < column_index;
+                         row_index++, element_index++, mirror_index += n, real_index++ )
+                        real[real_index] = interleaved[element_index];
+
+                    /* lower triangle -> conjugate transpose */
+                    for( ;
+                         row_index < n;
+                         row_index++, element_index++, mirror_index += n, real_index++ )
+                        real[real_index] =  interleaved[mirror_index];
                 }
+            }
+            else
+            {
+                /* real floats to real doubles. */
+                double * __restrict__ real        = (double *)real_buffer;
+                float * __restrict__  interleaved = (float *)interleaved_buffer;
 
-                /* lower triangle -> conjugate transpose */
-                for( ;
-                     row_index < n;
-                     row_index++, element_index += 2, real_index++ )
+                for( column_index = 0; column_index < n; column_index++ )
                 {
-                    real[real_index]      =  interleaved[mirror_index];
-                    imaginary[real_index] = -interleaved[mirror_index + 1];
+                    int mirror_index = column_index;
 
-                    mirror_index += n * 2;
+                    /* upper triangle -> copy */
+                    for( row_index = 0;
+                         row_index < column_index;
+                         row_index++, element_index++, mirror_index += n, real_index++ )
+                        real[real_index] = interleaved[element_index];
+
+                    /* lower triangle -> conjugate transpose */
+                    for( ;
+                         row_index < n;
+                         row_index++, element_index++, mirror_index += n, real_index++ )
+                        real[real_index] =  interleaved[mirror_index];
                 }
             }
         }
@@ -519,33 +606,14 @@ void copy_matrix( mxArray *X_inv, void *inverted_matrix, mxClassID computation_c
     n           = mxGetM( X_inv );
     X_inv_class = mxGetClassID( X_inv );
 
-    /* do we need to de-interleave our data? */
-    if( mxIsComplex( X_inv ) )
-    {
-        copy_contiguous_to_interleaved( mxGetPr( X_inv ),
-                                        mxGetPi( X_inv ),
-                                        inverted_matrix,
-                                        n,
-                                        computation_class,
-                                        X_inv_class );
-    }
-    else
-    {
-        size_t source_element_size = (computation_class == mxDOUBLE_CLASS ?
-                                      sizeof( double ) : sizeof( float ));
-
-        /* our data is contiguous, do we need to convert data types as we
-           copy it? */
-        if( X_inv_class == computation_class )
-            /* we have the same data types, let memcpy() do the heavy lifting. */
-            memcpy( mxGetPr( X_inv ), inverted_matrix, n * n * source_element_size );
-        else if( X_inv_class == mxDOUBLE_CLASS )
-            /* we need to convert floats to doubles. */
-            copy_float_to_double( mxGetPr( X_inv ), inverted_matrix, n * n );
-        else
-            /* we need to convert doubles to floats. */
-            copy_double_to_float( (float*)mxGetPr( X_inv ), inverted_matrix, n * n );
-    }
+    /* copy the data from contiguous to interleaved.  this properly handles
+       mirroring the data from upper triangular to full matrix as well. */
+    copy_contiguous_to_interleaved( mxGetPr( X_inv ),
+                                    mxGetPi( X_inv ),
+                                    inverted_matrix,
+                                    n,
+                                    computation_class,
+                                    X_inv_class );
 
     return;
 }

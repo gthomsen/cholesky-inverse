@@ -53,47 +53,38 @@ try
 catch
 end
 
-% calling without output arguments is valid.
-try
-    verify_inversion( R_single );
+% test cases for native precision using Hermitian and symmetric matrices.
+run_test( @() verify_inversion( R_single ), ...
+        'Failed to execute with a single precision, Hermitian matrix.' );
+run_test( @() verify_inversion( R_double ), ...
+        'Failed to execute with a double precision, Hermitian matrix.' );
+run_test( @() verify_inversion( S_single ), ...
+        'Failed to execute with a single precision, symmetric matrix.' );
+run_test( @() verify_inversion( S_double ), ...
+        'Failed to execute with a single precision, symmetric matrix.' );
 
-catch
-    status = false;
-%    getReport( me )
-%    msg = lasterror.message;
-%    disp( msg);
-    keyboard
-    error( 'cholesky_inverse() failed to execute with a single precision, Hermitian matrix.' );
-end
+% test cases for specified precision using Hermitian matrices.
+run_test( @() verify_inversion( R_single, 'single' ), ...
+        'Failed to execute with a single precision, Hermitian matrix.' );
+run_test( @() verify_inversion( R_double, 'single' ), ...
+        'Failed to execute with a double precision, Hermitian matrix.' );
+run_test( @() verify_inversion( R_single, 'double' ), ...
+        'Failed to execute with a single precision, Hermitian matrix.' );
+run_test( @() verify_inversion( R_double, 'double' ), ...
+        'Failed to execute with a double precision, Hermitian matrix.' );
 
-disp( 'Single complex worked' )
-
-try
-    verify_inversion( R_double );
-catch
-    status = false;
-    error( 'cholesky_inverse() failed to execute with a double precision, Hermitian matrix.' );
-end
-
-disp( 'Double complex worked' )
-
-try
-    cholesky_inverse( S_single );
-catch
-    status = false;
-    error( 'cholesky_inverse() failed to execute with a single precision, symmetric matrix.' );
-end
-
-disp( 'Single real worked' )
-
-try
-    cholesky_inverse( S_double );
-catch
-    status = false;
-    error( 'cholesky_inverse() failed to execute with a double precision, symmetrix matrix.' );
-end
+% test cases for specified precision using symmetric matrices.
+run_test( @() verify_inversion( S_single, 'single' ), ...
+        'Failed to execute with a single precision, symmetric matrix.' );
+run_test( @() verify_inversion( S_double, 'single' ), ...
+        'Failed to execute with a single precision, symmetric matrix.' );
+run_test( @() verify_inversion( S_single, 'double' ), ...
+        'Failed to execute with a single precision, symmetric matrix.' );
+run_test( @() verify_inversion( S_double, 'double' ), ...
+        'Failed to execute with a single precision, symmetric matrix.' );
 
 keyboard
+
 
 % calling with invalid parameters is invalid.
 for type_str = { 'int8', 'int16', 'int32', 'SINGLE', 'DOUBLE', 'FLOAT32', 'FLOAT64' }
@@ -105,14 +96,10 @@ for type_str = { 'int8', 'int16', 'int32', 'SINGLE', 'DOUBLE', 'FLOAT32', 'FLOAT
   end
 end
 
-R_inv_double = cholesky_inverse( R_double, 'double' );
-R_inv_single = cholesky_inverse( R_single, 'single' )
-R_inv_single = cholesky_inverse( R_single, 'double' );
-
 return
 
 function verify_inversion( R )
-
+% XXX: swap the names for R_inv_real and R_inv
 I = eye( size( R ), class( R ) );
 
 % invert using the MEX object.
@@ -128,11 +115,46 @@ R_inv_real = U_inv * U_inv';
 close_enough = (abs( R_inv_real * R ) - I)  < 1e-5;
 assert( all( close_enough(:) ) );
 
+R_inv_real - R_inv;
 close_enough = (R_inv_real - R_inv) < 1e-5;
 assert( all( close_enough(:) ) );
+
 %    assert( abs( R_inv_single_real * R_single ), single( eye( size( R_single ) ) ), -5e-6 );
 %    assert( R_inv_single_real, R_inv_single, -1e-6 );
 
 return
 
-%function
+function run_test( function_handle )
+
+if is_octave
+    try
+        feval( function_handle );
+    catch
+        err = lasterror;
+        disp( sprintf( 'Test failed - %s\n%s:%d -> %s:%d\n', ...
+                       err.message, ...
+                       err.stack(4).file, err.stack(4).line, ...
+                       err.stack(2).file, err.stack(2).line ) );
+    end
+else
+    try
+        feval( function_handle );
+    catch me
+        getReport( me );
+        disp( 'Failed to evaluate the function' );
+    end
+end
+
+return
+
+function flag = is_octave()
+
+persistent existence_result
+
+if isempty( existence_result )
+   existence_result = exist( 'OCTAVE_VERSION', 'builtin' );
+end
+
+flag = existence_result ~= 0;
+
+return
