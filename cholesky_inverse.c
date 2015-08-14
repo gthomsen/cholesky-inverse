@@ -133,12 +133,12 @@ void copy_float_to_double( double * __restrict__ destination, const float * __re
         destination[element_index] = source[element_index];
 }
 
-void copy_interleaved_to_contiguous( void * __restrict__ interleaved_buffer,
-                                     const void * __restrict__ real_buffer,
-                                     const void * __restrict__ imaginary_buffer,
-                                     int number_elements,
-                                     mxClassID source_type,
-                                     mxClassID destination_type )
+void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
+                                const void * __restrict__ real_buffer,
+                                const void * __restrict__ imaginary_buffer,
+                                int number_elements,
+                                mxClassID source_type,
+                                mxClassID destination_type )
 {
     int element_index   = 0;
     int interleaved_index = 0;
@@ -200,10 +200,10 @@ void copy_interleaved_to_contiguous( void * __restrict__ interleaved_buffer,
         {
             if( source_type == mxDOUBLE_CLASS )
             {
-                /* floats to doubles. */
-                float * __restrict__  real        = (float *)real_buffer;
-                float * __restrict__  imaginary   = (float *)imaginary_buffer;
-                double * __restrict__ interleaved = (double *)interleaved_buffer;
+                /* complex doubles to complex float. */
+                double * __restrict__ real        = (double *)real_buffer;
+                double * __restrict__ imaginary   = (double *)imaginary_buffer;
+                float * __restrict__  interleaved = (float *)interleaved_buffer;
 
                 for( element_index = 0;
                      element_index < number_elements;
@@ -215,10 +215,10 @@ void copy_interleaved_to_contiguous( void * __restrict__ interleaved_buffer,
             }
             else
             {
-                /* doubles to float */
-                double * __restrict__ real        = (double *)real_buffer;
-                double * __restrict__ imaginary   = (double *)imaginary_buffer;
-                float * __restrict__  interleaved = (float *)interleaved_buffer;
+                /* complex float to complex double */
+                float * __restrict__  real        = (float *)real_buffer;
+                float * __restrict__  imaginary   = (float *)imaginary_buffer;
+                double * __restrict__ interleaved = (double *)interleaved_buffer;
 
                 for( element_index = 0;
                      element_index < number_elements;
@@ -241,17 +241,13 @@ void copy_interleaved_to_contiguous( void * __restrict__ interleaved_buffer,
     }
 }
 
-void copy_contiguous_to_interleaved( void * __restrict__ real_buffer,
-                                     void * __restrict__ imaginary_buffer,
-                                     const void * __restrict__ interleaved_buffer,
-                                     int n,
-                                     mxClassID source_type,
-                                     mxClassID destination_type )
+void copy_interleaved_to_split( void * __restrict__ real_buffer,
+                                void * __restrict__ imaginary_buffer,
+                                const void * __restrict__ interleaved_buffer,
+                                int n,
+                                mxClassID source_type,
+                                mxClassID destination_type )
 {
-    /* XXX: need to handle copying the upper triangular matrix over, and the
-            lower triangular matrix as the conjugate transpose of the
-            upper. */
-
     int element_index   = 0;
     int real_index      = 0;
 
@@ -394,7 +390,7 @@ void copy_contiguous_to_interleaved( void * __restrict__ real_buffer,
                     /* upper triangle -> copy */
                     for( row_index = 0;
                          row_index < column_index;
-                         row_index++, element_index += 2, mirror_index += 2, real_index++ )
+                         row_index++, element_index += 2, mirror_index += 2 * n, real_index++ )
                     {
                         real[real_index]      = interleaved[element_index];
                         imaginary[real_index] = interleaved[element_index + 1];
@@ -403,7 +399,7 @@ void copy_contiguous_to_interleaved( void * __restrict__ real_buffer,
                     /* lower triangle -> conjugate transpose */
                     for( ;
                          row_index < n;
-                         row_index++, element_index += 2, mirror_index += 2, real_index++ )
+                         row_index++, element_index += 2, mirror_index += 2 * n, real_index++ )
                     {
                         real[real_index]      =  interleaved[mirror_index];
                         imaginary[real_index] = -interleaved[mirror_index + 1];
@@ -518,18 +514,17 @@ void *invert_matrix( const mxArray *X, mxClassID computation_class )
     matrix_size = (n * n *
                    (is_complex_flag ? 2 : 1) *
                    (computation_class == mxDOUBLE_CLASS ? sizeof( double ) : sizeof( float )));
-    /*if( NULL == (matrix_buffer = mxMalloc( matrix_size )) )*/
-    if( NULL == (matrix_buffer = mxCalloc( matrix_size, 1 )) )
+    if( NULL == (matrix_buffer = mxMalloc( matrix_size )) )
         mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:memoryAllocation",
                            "Failed to allocate %lu bytes for the inversion buffer.",
                            matrix_size );
 
-    copy_interleaved_to_contiguous( matrix_buffer,
-                                    mxGetPr( X ),
-                                    mxGetPi( X ),
-                                    n * n,
-                                    mxGetClassID( X ),
-                                    computation_class );
+    copy_split_to_interleaved( matrix_buffer,
+                               mxGetPr( X ),
+                               mxGetPi( X ),
+                               n * n,
+                               mxGetClassID( X ),
+                               computation_class );
 
     /* do the Cholesky factorization */
     /* if X was not positive definite issue an error about it */
@@ -542,9 +537,12 @@ void *invert_matrix( const mxArray *X, mxClassID computation_class )
             dpotrf( &uplo, &n, matrix_buffer, &n, &lapack_status );
 
         if( lapack_status != 0 )
+        {
+            mxFree( matrix_buffer );
             mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:lapack",
                                "Failed to factorize X (%d).",
                                lapack_status );
+        }
 
         /* invert */
         if( is_complex_flag )
@@ -552,26 +550,28 @@ void *invert_matrix( const mxArray *X, mxClassID computation_class )
         else
             dpotri( &uplo, &n, matrix_buffer, &n, &lapack_status );
 
+        if( lapack_status != 0 )
+        {
+            mxFree( matrix_buffer );
+            mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:lapack",
+                               "Failed to invert X (%d).",
+                               lapack_status );
+        }
     }
     else
     {
-/*        print_square_matrix_float( matrix_buffer, n, is_complex_flag, 'F' ); */
         if( is_complex_flag )
-        {
-#if 0
-            printf( "cpotrf_()\n" );
-#endif
             cpotrf( &uplo, &n, matrix_buffer, &n, &lapack_status );
-        }
         else
             spotrf( &uplo, &n, matrix_buffer, &n, &lapack_status );
 
-/*        print_square_matrix_float( matrix_buffer, n, is_complex_flag, uplo ); */
-
         if( lapack_status != 0 )
+        {
+            mxFree( matrix_buffer );
             mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:lapack",
                                "Failed to factorize X (%d).",
                                lapack_status );
+        }
 
         /* invert */
         if( is_complex_flag )
@@ -580,15 +580,13 @@ void *invert_matrix( const mxArray *X, mxClassID computation_class )
             spotri( &uplo, &n, matrix_buffer, &n, &lapack_status );
 
         if( lapack_status != 0 )
+        {
+            mxFree( matrix_buffer );
             mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:lapack",
                                "Failed to invert X (%d).",
                                lapack_status );
-
-/*        print_square_matrix_float( matrix_buffer, n, is_complex_flag, 'F' ); */
+        }
     }
-
-    /* do the Cholesky inverse */
-    /* if there was an error, issue an error about it */
 
     return matrix_buffer;
 }
@@ -608,12 +606,12 @@ void copy_matrix( mxArray *X_inv, void *inverted_matrix, mxClassID computation_c
 
     /* copy the data from contiguous to interleaved.  this properly handles
        mirroring the data from upper triangular to full matrix as well. */
-    copy_contiguous_to_interleaved( mxGetPr( X_inv ),
-                                    mxGetPi( X_inv ),
-                                    inverted_matrix,
-                                    n,
-                                    computation_class,
-                                    X_inv_class );
+    copy_interleaved_to_split( mxGetPr( X_inv ),
+                               mxGetPi( X_inv ),
+                               inverted_matrix,
+                               n,
+                               computation_class,
+                               X_inv_class );
 
     return;
 }
@@ -697,13 +695,6 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
            do them in the same precision the data are. */
         computation_class = X_class;
 
-#if 0
-    if( computation_class == mxDOUBLE_CLASS )
-        printf( "Factoring in double precision.\n" );
-    else
-        printf( "Factoring in single precision.\n" );
-#endif
-
     if( NULL == (inverted_matrix = invert_matrix( prhs[INPUT_X_INDEX], computation_class )) )
     {
         mexWarnMsgIdAndTxt( "MATLAB:cholesky_inverse:warning",
@@ -733,11 +724,16 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
                                                                         output_dimensions,
                                                                         X_class,
                                                                         (X_is_complex ? mxCOMPLEX : mxREAL) )) )
+    {
+        mxFree( inverted_matrix );
         mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:memoryAllocation",
                            "Failed to allocate the output inverse matrix." );
+    }
 
     /* copy the interleaved matrix into the return argument. */
     copy_matrix( plhs[OUTPUT_X_INV_INDEX], inverted_matrix, computation_class );
+
+    mxFree( inverted_matrix );
 
     return;
 }
