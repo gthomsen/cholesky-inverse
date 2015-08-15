@@ -107,10 +107,10 @@ void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
     int element_index     = 0;
     int interleaved_index = 0;
 
-    /* are we simply splitting one buffer into two? */
+    /* are we simply interleaving two buffers into one? */
     if( source_type == destination_type )
     {
-        /* are we copying complex values?  if so, we need to de-interleave
+        /* are we copying complex values?  if so, we need to interleave
            them. */
         if( NULL != imaginary_buffer )
         {
@@ -148,17 +148,17 @@ void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
         else
         {
             /* our source and destination types are the same, and we aren't
-               de-interleaving things.  simply memcpy() the data. */
+               interleaving things.  simply memcpy() the data. */
             memcpy( interleaved_buffer, real_buffer,
                     number_elements * (source_type == mxDOUBLE_CLASS ?
                                        sizeof( double ) : sizeof( float )) );
         }
     }
-    /* or splitting into two buffers that are a different type than the
+    /* or interleaving into two buffers that are a different type than the
        source? */
     else
     {
-        /* are we copying complex values?  if so, we need to de-interleave
+        /* are we copying complex values?  if so, we need to interleave
            them. */
         if( NULL != imaginary_buffer )
         {
@@ -196,7 +196,7 @@ void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
         else
         {
             /* our source and destination types are different, but we're not
-               de-interleaving things.  copy and convert the data. */
+               interleaving things.  copy and convert the data. */
             if( mxDOUBLE_CLASS == source_type )
             {
                 double * __restrict__ real        = (double *)real_buffer;
@@ -245,7 +245,7 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
     int row_index    = 0;
     int column_index = 0;
 
-    /* are we simply splitting one buffer into to? */
+    /* are we simply splitting one buffer into two? */
     if( source_type == destination_type )
     {
         if( NULL != imaginary_buffer )
