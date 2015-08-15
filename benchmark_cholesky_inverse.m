@@ -85,7 +85,7 @@ for iteration_index = 1:number_iterations
     R_inv = U_inv * U_inv';
     local_timings(iteration_index) = toc;
 end
-timings(4) = median( local_timings );
+timings(3) = median( local_timings );
 
 % explicit inverse exploiting positive definite structure.
 for iteration_index = 1:number_iterations
