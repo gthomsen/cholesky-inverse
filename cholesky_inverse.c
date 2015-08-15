@@ -112,9 +112,9 @@ void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
     {
         /* are we copying complex values?  if so, we need to de-interleave
            them. */
-        if( imaginary_buffer != NULL )
+        if( NULL != imaginary_buffer )
         {
-            if( source_type == mxDOUBLE_CLASS )
+            if( mxDOUBLE_CLASS == source_type )
             {
                 /* doubles to doubles. */
                 double * __restrict__ real        = (double *)real_buffer;
@@ -160,9 +160,9 @@ void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
     {
         /* are we copying complex values?  if so, we need to de-interleave
            them. */
-        if( imaginary_buffer != NULL )
+        if( NULL != imaginary_buffer )
         {
-            if( source_type == mxDOUBLE_CLASS )
+            if( mxDOUBLE_CLASS == source_type )
             {
                 /* complex doubles to complex float. */
                 double * __restrict__ real        = (double *)real_buffer;
@@ -197,7 +197,7 @@ void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
         {
             /* our source and destination types are different, but we're not
                de-interleaving things.  copy and convert the data. */
-            if( source_type == mxDOUBLE_CLASS )
+            if( mxDOUBLE_CLASS == source_type )
             {
                 double * __restrict__ real        = (double *)real_buffer;
                 float * __restrict__  interleaved = (float *)interleaved_buffer;
@@ -248,9 +248,9 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
     /* are we simply splitting one buffer into to? */
     if( source_type == destination_type )
     {
-        if( imaginary_buffer != NULL )
+        if( NULL != imaginary_buffer )
         {
-            if( source_type == mxDOUBLE_CLASS )
+            if( mxDOUBLE_CLASS == source_type )
             {
                 /* complex doubles to complex doubles. */
                 double * __restrict__ real        = (double *)real_buffer;
@@ -313,7 +313,7 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
         }
         else
         {
-            if( source_type == mxDOUBLE_CLASS )
+            if( mxDOUBLE_CLASS == source_type )
             {
                 /* real doubles to real doubles. */
                 double * __restrict__ real        = (double *)real_buffer;
@@ -365,9 +365,9 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
        source? */
     else
     {
-        if( imaginary_buffer != NULL )
+        if( NULL != imaginary_buffer )
         {
-            if( source_type == mxDOUBLE_CLASS )
+            if( mxDOUBLE_CLASS == source_type )
             {
                 /* complex doubles to complex floats. */
                 float * __restrict__  real        = (float *)real_buffer;
@@ -430,7 +430,7 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
         }
         else
         {
-            if( source_type == mxDOUBLE_CLASS )
+            if( mxDOUBLE_CLASS == source_type )
             {
                 /* real doubles to real floats. */
                 float * __restrict__  real        = (float *)real_buffer;
@@ -504,7 +504,7 @@ void invert_matrix( void *interleaved_buffer, int N,
     /* do the Cholesky factorization based on the data type and complexity.
        throw an error indicating that the matrix being inverted isn't positive
        definite if LAPACK concludes that. */
-    if( computation_class == mxDOUBLE_CLASS )
+    if( mxDOUBLE_CLASS == computation_class )
     {
         /* factor */
         if( complexity_flag )
@@ -512,7 +512,7 @@ void invert_matrix( void *interleaved_buffer, int N,
         else
             dpotrf( &uplo, &n, interleaved_buffer, &n, &lapack_status );
 
-        if( lapack_status != 0 )
+        if( 0 != lapack_status )
         {
             mxFree( interleaved_buffer );
             mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:lapack",
@@ -526,7 +526,7 @@ void invert_matrix( void *interleaved_buffer, int N,
         else
             dpotri( &uplo, &n, interleaved_buffer, &n, &lapack_status );
 
-        if( lapack_status != 0 )
+        if( 0 != lapack_status )
         {
             mxFree( interleaved_buffer );
             mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:lapack",
@@ -541,7 +541,7 @@ void invert_matrix( void *interleaved_buffer, int N,
         else
             spotrf( &uplo, &n, interleaved_buffer, &n, &lapack_status );
 
-        if( lapack_status != 0 )
+        if( 0 != lapack_status )
         {
             mxFree( interleaved_buffer );
             mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:lapack",
@@ -555,7 +555,7 @@ void invert_matrix( void *interleaved_buffer, int N,
         else
             spotri( &uplo, &n, interleaved_buffer, &n, &lapack_status );
 
-        if( lapack_status != 0 )
+        if( 0 != lapack_status )
         {
             mxFree( interleaved_buffer );
             mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:lapack",
@@ -589,7 +589,7 @@ void validate_inputs( int nrhs, const mxArray *prhs[] )
                            "X must be either single or double precision." );
     }
 
-    if( nrhs == 2 && mxCHAR_CLASS != mxGetClassID( prhs[INPUT_PRECISION_INDEX] ) )
+    if( 2 == nrhs && mxCHAR_CLASS != mxGetClassID( prhs[INPUT_PRECISION_INDEX] ) )
         mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:invalidInput",
                            "precision must be a string." );
 
@@ -737,7 +737,7 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
 
     /* if the user specified a precision to do our inversion in, get that.
        otherwise default to the precision of the matrix being inverted. */
-    if( nrhs == 2 )
+    if( 2 == nrhs )
         computation_class = get_computation_class( prhs[INPUT_PRECISION_INDEX] );
     else
         computation_class = mxGetClassID( prhs[INPUT_X_INDEX] );
