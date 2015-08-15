@@ -3,6 +3,22 @@
 
 #include "mex.h"
 
+/*
+  MEX object that allows inversion of a positive definite matrix (either
+  symmetric or Hermitian) via LAPACK's potrf()/potri() routines.  This routine
+  creates a new matrix, interleaves the real and imaginary portions of the
+  supplied matrix, inverts it efficiently, and then copies the result into a
+  newly created matrix.  Care is taken to minimize buffer copies so this is
+  faster the equivalent operations in MATLAB (Cholesky decomposition via
+  chol(), a linear solve for the factor's inverse, and explicit formation of
+  the full inverse).
+
+  Initial benchmarks indicate this object is roughly twice as fast as a simple
+  linear solve against the identity matrix, and ~30% faster a Cholesky
+  factorization, factor inversion, and full matrix inverse calculation.
+ */
+
+
 #ifndef HAVE_OCTAVE
 /* pull in mxCreateUninitNumericArray() if we're building a Matlab MEX object.
    Octave does not implement this part of the MEX API in v3.6.4.
@@ -12,19 +28,17 @@
 #include "matrix.h"
 #endif
 
-/* mexAtExit( func ) - void func( void ) */
-
+/* indices for the input arguments and output value the MEX object accepts. */
 #define INPUT_X_INDEX         0
 #define INPUT_PRECISION_INDEX 1
 #define OUTPUT_X_INV_INDEX    0
 
+/* valid precision strings for the optional, second argument the MEX object
+   accepts. */
 #define PRECISION_DOUBLE_STR  "double"
 #define PRECISION_FLOAT32_STR "float32"
 #define PRECISION_FLOAT64_STR "float64"
 #define PRECISION_SINGLE_STR  "single"
-
-#define PRECISION_DOUBLE_ID   0
-#define PRECISION_SINGLE_ID   1
 
 /* TODO:
    1. Hold onto the internal inversion buffer.
@@ -35,18 +49,32 @@
       definite.
  */
 
+/* provide declarations for the LAPACK routines needed to invert a positive
+   definite matrix using Cholesky decomposition.
+
+   Octave does not provide a compatibility layer and requires mapping the
+   unadorned LAPACK names to the underlying Fortran symbols that have
+   trailing "_" on the names.
+
+      NOTE: This layer assumes that we're compiled with mkoctfile so that
+            the integers provided to LAPACK match what is expected.
+
+   MATLAB does provide a compatibility layer which handles mapping to
+   the underlying LAPACK.  symbol names and integer sizes are properly
+   handled behind the scenes. */
 #ifdef HAVE_OCTAVE
+/* Cholesky decomposition. */
 extern void spotrf_( char *uplo, int *n, float* a, int *lda, int *info );
 extern void dpotrf_( char *uplo, int *n, double* a, int *lda, int *info );
 extern void cpotrf_( char *uplo, int *n, float* a, int *lda, int *info );
 extern void zpotrf_( char *uplo, int *n, double* a, int *lda, int *info );
 
+/* Inversion using a Cholesky factorization. */
 extern void spotri_( char *uplo, int *n, float* a, int *lda, int *info );
 extern void dpotri_( char *uplo, int *n, double* a, int *lda, int *info );
 extern void cpotri_( char *uplo, int *n, float* a, int *lda, int *info );
 extern void zpotri_( char *uplo, int *n, double* a, int *lda, int *info );
 
-/* XXX: remove these */
 #define spotrf spotrf_
 #define dpotrf dpotrf_
 #define cpotrf cpotrf_
@@ -64,75 +92,6 @@ extern void zpotri_( char *uplo, int *n, double* a, int *lda, int *info );
 #include "lapack.h"
 #endif
 
-void print_square_matrix_float( float *A, int n, int is_complex, char uplo )
-{
-    int element_index = 0;
-    int row_index     = 0;
-    int column_index  = 0;
-
-    if( is_complex )
-    {
-        for( row_index = 0; row_index < n; row_index++ )
-        {
-            for( column_index = 0; column_index < n; column_index++ )
-            {
-                /* convert from row-major to column-major indexing. */
-                element_index = ((column_index * n) + row_index) * 2;
-
-                /* are we printing an upper triangular matrix? */
-                if( uplo == 'U' || uplo == 'u' )
-                {
-                    if( column_index >= row_index )
-                        printf( "   %+8.5f + %+8.5fi",
-                                A[element_index],
-                                A[element_index + 1] );
-                    else
-                        printf( "   %+8.5f + %+8.5fi",
-                                0., 0. );
-                }
-                /* a lower triangular matrix? */
-                else if( uplo == 'L' || uplo == 'l' )
-                {
-                    if( column_index <= row_index )
-                        printf( "   %+8.5f + %+8.5fi",
-                                A[element_index],
-                                A[element_index + 1] );
-                    else
-                        printf( "   %+8.5f + %+8.5fi",
-                                0., 0. );
-                }
-                /* or the full matrix? */
-                else
-                    printf( "   %+8.5f + %+8.5fi",
-                            A[element_index],
-                            A[element_index + 1] );
-            }
-            printf( "\n" );
-        }
-    }
-    else
-    {
-    }
-}
-
-void copy_double_to_float( float * __restrict__ destination, const double * __restrict__ source,
-                           int number_elements )
-{
-    int element_index = 0;
-
-    for( element_index = 0; element_index < number_elements; element_index++ )
-        destination[element_index] = source[element_index];
-}
-
-void copy_float_to_double( double * __restrict__ destination, const float * __restrict__ source,
-                           int number_elements )
-{
-    int element_index = 0;
-
-    for( element_index = 0; element_index < number_elements; element_index++ )
-        destination[element_index] = source[element_index];
-}
-
 void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
                                 const void * __restrict__ real_buffer,
                                 const void * __restrict__ imaginary_buffer,
@@ -140,7 +99,9 @@ void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
                                 mxClassID source_type,
                                 mxClassID destination_type )
 {
-    int element_index   = 0;
+    /* linear indices to interleave the real/imaginary portions of the matrix
+       into a single buffer suitable for use by LAPACK. */
+    int element_index     = 0;
     int interleaved_index = 0;
 
     /* are we simply splitting one buffer into two? */
@@ -234,9 +195,21 @@ void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
             /* our source and destination types are different, but we're not
                de-interleaving things.  copy and convert the data. */
             if( source_type == mxDOUBLE_CLASS )
-                copy_double_to_float( interleaved_buffer, real_buffer, number_elements );
+            {
+                double * __restrict__ real        = (double *)real_buffer;
+                float * __restrict__  interleaved = (float *)interleaved_buffer;
+
+                for( element_index = 0; element_index < number_elements; element_index++ )
+                    interleaved[element_index] = real[element_index];
+            }
             else
-                copy_float_to_double( interleaved_buffer, real_buffer, number_elements );
+            {
+                float * __restrict__  real        = (float *)real_buffer;
+                double * __restrict__ interleaved = (double *)interleaved_buffer;
+
+                for( element_index = 0; element_index < number_elements; element_index++ )
+                    interleaved[element_index] = real[element_index];
+            }
         }
     }
 }
@@ -248,9 +221,20 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
                                 mxClassID source_type,
                                 mxClassID destination_type )
 {
-    int element_index   = 0;
-    int real_index      = 0;
+    /* indices used to index the matrices linearly both in column-
+       (element_index) and row-major (mirror_index) order so that we can
+       operate on both the upper and lower triangular portions of the matrix
+       without complex arithmetic. */
+    int element_index = 0;
+    int mirror_index  = 0;
 
+    /* linear index into the column-major real/imaginary buffers from the
+       input matrix. */
+    /* XXX: rename this */
+    int real_index    = 0;
+
+    /* row/column indices used to iterate through the matrix we're copying
+       and (conjugate) transposing. */
     int row_index    = 0;
     int column_index = 0;
 
@@ -268,7 +252,7 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
 
                 for( column_index = 0; column_index < n; column_index++ )
                 {
-                    int mirror_index = column_index * 2;
+                    mirror_index = column_index * 2;
 
                     /* upper triangle -> copy */
                     for( row_index = 0;
@@ -298,7 +282,7 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
 
                 for( column_index = 0; column_index < n; column_index++ )
                 {
-                    int mirror_index = column_index * 2;
+                    mirror_index = column_index * 2;
 
                     /* upper triangle -> copy */
                     for( row_index = 0;
@@ -330,7 +314,7 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
 
                 for( column_index = 0; column_index < n; column_index++ )
                 {
-                    int mirror_index = column_index;
+                    mirror_index = column_index;
 
                     /* upper triangle -> copy */
                     for( row_index = 0;
@@ -353,7 +337,7 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
 
                 for( column_index = 0; column_index < n; column_index++ )
                 {
-                    int mirror_index = column_index;
+                    mirror_index = column_index;
 
                     /* upper triangle -> copy */
                     for( row_index = 0;
@@ -385,7 +369,7 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
 
                 for( column_index = 0; column_index < n; column_index++ )
                 {
-                    int mirror_index = column_index * 2;
+                    mirror_index = column_index * 2;
 
                     /* upper triangle -> copy */
                     for( row_index = 0;
@@ -415,7 +399,7 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
 
                 for( column_index = 0; column_index < n; column_index++ )
                 {
-                    int mirror_index = column_index * 2;
+                    mirror_index = column_index * 2;
 
                     /* upper triangle -> copy */
                     for( row_index = 0;
@@ -447,7 +431,7 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
 
                 for( column_index = 0; column_index < n; column_index++ )
                 {
-                    int mirror_index = column_index;
+                    mirror_index = column_index;
 
                     /* upper triangle -> copy */
                     for( row_index = 0;
@@ -455,11 +439,11 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
                          row_index++, element_index++, mirror_index += n, real_index++ )
                         real[real_index] = interleaved[element_index];
 
-                    /* lower triangle -> conjugate transpose */
+                    /* lower triangle -> transpose */
                     for( ;
                          row_index < n;
                          row_index++, element_index++, mirror_index += n, real_index++ )
-                        real[real_index] =  interleaved[mirror_index];
+                        real[real_index] = interleaved[mirror_index];
                 }
             }
             else
@@ -470,7 +454,7 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
 
                 for( column_index = 0; column_index < n; column_index++ )
                 {
-                    int mirror_index = column_index;
+                    mirror_index = column_index;
 
                     /* upper triangle -> copy */
                     for( row_index = 0;
@@ -478,11 +462,11 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
                          row_index++, element_index++, mirror_index += n, real_index++ )
                         real[real_index] = interleaved[element_index];
 
-                    /* lower triangle -> conjugate transpose */
+                    /* lower triangle -> transpose */
                     for( ;
                          row_index < n;
                          row_index++, element_index++, mirror_index += n, real_index++ )
-                        real[real_index] =  interleaved[mirror_index];
+                        real[real_index] = interleaved[mirror_index];
                 }
             }
         }
@@ -494,6 +478,7 @@ void *invert_matrix( const mxArray *X, mxClassID computation_class )
     size_t  matrix_size     = 0;
     void   *matrix_buffer   = NULL;
 
+    /* dimension of the matrix and status variable for the LAPACK calls. */
 #ifdef HAVE_OCTAVE
     int     n               = 0;
     int     lapack_status   = 0;
@@ -501,12 +486,18 @@ void *invert_matrix( const mxArray *X, mxClassID computation_class )
     ptrdiff_t n             = 0;
     ptrdiff_t lapack_status = 0;
 #endif
-    char    uplo            = 'U';
-    int     is_complex_flag = 0;
+
+    /* complexity of our input argument. */
+    int is_complex_flag = 0;
+
+    /* our factorization operates on the upper triangular portion of the
+       matrix. */
+    char uplo = 'U';
 
     if( X == NULL || computation_class == mxUNKNOWN_CLASS )
         return NULL;
 
+    /* get the dimension and complexity of our input matrix. */
     n               = mxGetM( X );
     is_complex_flag = mxIsComplex( X );
 
@@ -519,6 +510,9 @@ void *invert_matrix( const mxArray *X, mxClassID computation_class )
                            "Failed to allocate %lu bytes for the inversion buffer.",
                            matrix_size );
 
+    /* create an interleaved buffer of the appropriate data type allows us to
+       use it with LAPACK.  this properly handles input matrices that are
+       either real or complex. */
     copy_split_to_interleaved( matrix_buffer,
                                mxGetPr( X ),
                                mxGetPi( X ),
@@ -526,8 +520,9 @@ void *invert_matrix( const mxArray *X, mxClassID computation_class )
                                mxGetClassID( X ),
                                computation_class );
 
-    /* do the Cholesky factorization */
-    /* if X was not positive definite issue an error about it */
+    /* do the Cholesky factorization based on the data type and complexity.
+       throw an error indicating that the matrix being inverted isn't positive
+       definite if LAPACK concludes that. */
     if( computation_class == mxDOUBLE_CLASS )
     {
         /* factor */
@@ -591,27 +586,23 @@ void *invert_matrix( const mxArray *X, mxClassID computation_class )
     return matrix_buffer;
 }
 
+/* XXX: remove copy matrix and put the copy in the main MEX object.  factor the
+        other copy out of the inverse. */
 void copy_matrix( mxArray *X_inv, void *inverted_matrix, mxClassID computation_class )
 {
-    int       n           = 0;
-    mxClassID X_inv_class = mxUNKNOWN_CLASS;
-
     if( X_inv == NULL || inverted_matrix == NULL ||
         !(computation_class == mxDOUBLE_CLASS ||
           computation_class == mxSINGLE_CLASS) )
         return;
-
-    n           = mxGetM( X_inv );
-    X_inv_class = mxGetClassID( X_inv );
 
     /* copy the data from contiguous to interleaved.  this properly handles
        mirroring the data from upper triangular to full matrix as well. */
     copy_interleaved_to_split( mxGetPr( X_inv ),
                                mxGetPi( X_inv ),
                                inverted_matrix,
-                               n,
+                               mxGetM( X_inv ),
                                computation_class,
-                               X_inv_class );
+                               mxGetClassID( X_inv ) );
 
     return;
 }
@@ -624,17 +615,20 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
     mxClassID X_class           = mxUNKNOWN_CLASS;
     mxClassID computation_class = mxUNKNOWN_CLASS;
 
-    /* nonsense to avoid compiler warnings */
+    /* holds the dimensions of the matrix being inverted. */
+    const mwSize *input_dimensions = NULL;
+
+    /* dimensions of the inverse we return.  the MEX interface has changed and
+       Octave does not yet support the newest version (2015a) as of
+       2015/08/14. */
 #ifdef HAVE_OCTAVE
-    mwSize    output_dimensions[2];
+    mwSize output_dimensions[2];
 #else
-    size_t    output_dimensions[2];
+    size_t output_dimensions[2];
 #endif
 
-    const mwSize   *input_dimensions = NULL;
-
-
-    void     *inverted_matrix = NULL;
+    /* pointer to the inverted matrix returned by invert_matrix(). */
+    void *inverted_matrix = NULL;
 
     /* Check for proper number of input and output arguments */
     if( nrhs < 1 || nrhs > 2 )
@@ -709,17 +703,18 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
         return;
     }
 
-    /* allocate the output variable with the output precision and X's
+    /* allocate the output variable with the user specified precision and X's
        complexity.  since we'll immediately copy our interleaved matrix into
-       this variable's buffer(s), we request uninitialized data. */
-    input_dimensions = mxGetDimensions( prhs[INPUT_X_INDEX] );
+       this variable's buffer(s), we request uninitialized data when
+       possible. */
+    input_dimensions     = mxGetDimensions( prhs[INPUT_X_INDEX] );
     output_dimensions[0] = input_dimensions[0];
     output_dimensions[1] = input_dimensions[1];
 
-#ifndef HAVE_OCTAVE
-    if( NULL == (plhs[OUTPUT_X_INV_INDEX] = mxCreateUninitNumericArray( 2,
-#else
+#ifdef HAVE_OCTAVE
     if( NULL == (plhs[OUTPUT_X_INV_INDEX] = mxCreateNumericArray(       2,
+#else
+    if( NULL == (plhs[OUTPUT_X_INV_INDEX] = mxCreateUninitNumericArray( 2,
 #endif
                                                                         output_dimensions,
                                                                         X_class,
