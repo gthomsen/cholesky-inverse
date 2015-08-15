@@ -1,0 +1,216 @@
+diff --git a/cholesky_inverse.c b/cholesky_inverse.c
+index 2a5861a..5487915 100644
+--- a/cholesky_inverse.c
++++ b/cholesky_inverse.c
+@@ -92,9 +92,11 @@ extern void zpotri_( char *uplo, int *n, double* a, int *lda, int *info );
+ #include "lapack.h"
+ #endif
+ 
+-/* copies the contents of the split buffers' into the interleaved buffer,
+-   performing data type conversion if the source and destination data types
+-   differ.  real matrix are represented by a NULL imaginary_buffer. */
++/* copies the upper triangle of the split buffers' into the interleaved
++   buffer, performing data type conversion if the source and destination data
++   types differ.  the lower triangle of the split buffers and interleaved
++   buffer are not accessed.  real matrix are represented by a NULL
++   imaginary_buffer. */
+ void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
+                                 const void * __restrict__ real_buffer,
+                                 const void * __restrict__ imaginary_buffer,
+@@ -107,7 +109,10 @@ void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
+     int split_index       = 0;
+     int interleaved_index = 0;
+ 
+-    int number_elements = n * n;
++    /* row/column indices used to iterate through the matrix we're copying
++       the upper triangle of. */
++    int column_index = 0;
++    int row_index    = 0;
+ 
+     /* are we simply interleaving two buffers into one? */
+     if( source_type == destination_type )
+@@ -123,12 +128,19 @@ void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
+                 double * __restrict__ imaginary   = (double *)imaginary_buffer;
+                 double * __restrict__ interleaved = (double *)interleaved_buffer;
+ 
+-                for( split_index = 0;
+-                     split_index < number_elements;
+-                     split_index++, interleaved_index += 2 )
++                /* copy the upper triangle over. */
++                for( column_index = 0; column_index < n; column_index++ )
+                 {
+-                    interleaved[interleaved_index]     = real[split_index];
+-                    interleaved[interleaved_index + 1] = imaginary[split_index];
++                    for( row_index = 0;
++                         row_index <= column_index;
++                         row_index++, interleaved_index += 2, split_index++ )
++                    {
++                        interleaved[interleaved_index]     = real[split_index];
++                        interleaved[interleaved_index + 1] = imaginary[split_index];
++                    }
++
++                    interleaved_index += (n - column_index - 1) * 2;
++                    split_index       += (n - column_index - 1);
+                 }
+             }
+             else
+@@ -138,22 +150,60 @@ void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
+                 float * __restrict__ imaginary   = (float *)imaginary_buffer;
+                 float * __restrict__ interleaved = (float *)interleaved_buffer;
+ 
+-                for( split_index = 0;
+-                     split_index < number_elements;
+-                     split_index++, interleaved_index += 2 )
++                /* copy the upper triangle over. */
++                for( column_index = 0; column_index < n; column_index++ )
+                 {
+-                    interleaved[interleaved_index]     = real[split_index];
+-                    interleaved[interleaved_index + 1] = imaginary[split_index];
++                    for( row_index = 0;
++                         row_index <= column_index;
++                         row_index++, interleaved_index += 2, split_index++ )
++                    {
++                        interleaved[interleaved_index]     = real[split_index];
++                        interleaved[interleaved_index + 1] = imaginary[split_index];
++                    }
++
++                    interleaved_index += (n - column_index - 1) * 2;
++                    split_index       += (n - column_index - 1);
+                 }
+             }
+         }
+         else
+         {
+-            /* our source and destination types are the same, and we aren't
+-               interleaving things.  simply memcpy() the data. */
+-            memcpy( interleaved_buffer, real_buffer,
+-                    number_elements * (source_type == mxDOUBLE_CLASS ?
+-                                       sizeof( double ) : sizeof( float )) );
++            if( mxDOUBLE_CLASS == source_type )
++            {
++                /* real doubles to real doubles. */
++                double * __restrict__ real        = (double *)real_buffer;
++                double * __restrict__ interleaved = (double *)interleaved_buffer;
++
++                /* copy the upper triangle over. */
++                for( column_index = 0; column_index < n; column_index++ )
++                {
++                    for( row_index = 0;
++                         row_index <= column_index;
++                         row_index++, interleaved_index++, split_index++ )
++                        interleaved[interleaved_index] = real[split_index];
++
++                    interleaved_index += (n - column_index - 1);
++                    split_index       += (n - column_index - 1);
++                }
++            }
++            else
++            {
++                /* real floats to real floats. */
++                float * __restrict__ real        = (float *)real_buffer;
++                float * __restrict__ interleaved = (float *)interleaved_buffer;
++
++                /* copy the upper triangle over. */
++                for( column_index = 0; column_index < n; column_index++ )
++                {
++                    for( row_index = 0;
++                         row_index <= column_index;
++                         row_index++, interleaved_index++, split_index++ )
++                        interleaved[interleaved_index] = real[split_index];
++
++                    interleaved_index += (n - column_index - 1);
++                    split_index       += (n - column_index - 1);
++                }
++            }
+         }
+     }
+     /* or interleaving into two buffers that are a different type than the
+@@ -171,12 +221,19 @@ void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
+                 double * __restrict__ imaginary   = (double *)imaginary_buffer;
+                 float * __restrict__  interleaved = (float *)interleaved_buffer;
+ 
+-                for( split_index = 0;
+-                     split_index < number_elements;
+-                     split_index++, interleaved_index += 2 )
++                /* copy the upper triangle over. */
++                for( column_index = 0; column_index < n; column_index++ )
+                 {
+-                    interleaved[interleaved_index]     = real[split_index];
+-                    interleaved[interleaved_index + 1] = imaginary[split_index];
++                    for( row_index = 0;
++                         row_index <= column_index;
++                         row_index++, interleaved_index += 2, split_index++ )
++                    {
++                        interleaved[interleaved_index]     = real[split_index];
++                        interleaved[interleaved_index + 1] = imaginary[split_index];
++                    }
++
++                    interleaved_index += (n - column_index - 1) * 2;
++                    split_index       += (n - column_index - 1);
+                 }
+             }
+             else
+@@ -186,12 +243,19 @@ void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
+                 float * __restrict__  imaginary   = (float *)imaginary_buffer;
+                 double * __restrict__ interleaved = (double *)interleaved_buffer;
+ 
+-                for( split_index = 0;
+-                     split_index < number_elements;
+-                     split_index++, interleaved_index += 2 )
++                /* copy the upper triangle over. */
++                for( column_index = 0; column_index < n; column_index++ )
+                 {
+-                    interleaved[interleaved_index]     = real[split_index];
+-                    interleaved[interleaved_index + 1] = imaginary[split_index];
++                    for( row_index = 0;
++                         row_index <= column_index;
++                         row_index++, interleaved_index += 2, split_index++ )
++                    {
++                        interleaved[interleaved_index]     = real[split_index];
++                        interleaved[interleaved_index + 1] = imaginary[split_index];
++                    }
++
++                    interleaved_index += (n - column_index - 1) * 2;
++                    split_index       += (n - column_index - 1);
+                 }
+             }
+         }
+@@ -204,16 +268,34 @@ void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
+                 double * __restrict__ real        = (double *)real_buffer;
+                 float * __restrict__  interleaved = (float *)interleaved_buffer;
+ 
+-                for( split_index = 0; split_index < number_elements; split_index++ )
+-                    interleaved[split_index] = real[split_index];
++                /* copy the upper triangle over. */
++                for( column_index = 0; column_index < n; column_index++ )
++                {
++                    for( row_index = 0;
++                         row_index <= column_index;
++                         row_index++, interleaved_index++, split_index++ )
++                        interleaved[interleaved_index] = real[split_index];
++
++                    interleaved_index += (n - column_index - 1);
++                    split_index       += (n - column_index - 1);
++                }
+             }
+             else
+             {
+                 float * __restrict__  real        = (float *)real_buffer;
+                 double * __restrict__ interleaved = (double *)interleaved_buffer;
+ 
+-                for( split_index = 0; split_index < number_elements; split_index++ )
+-                    interleaved[split_index] = real[split_index];
++                /* copy the upper triangle over. */
++                for( column_index = 0; column_index < n; column_index++ )
++                {
++                    for( row_index = 0;
++                         row_index <= column_index;
++                         row_index++, interleaved_index++, split_index++ )
++                        interleaved[interleaved_index] = real[split_index];
++
++                    interleaved_index += (n - column_index - 1);
++                    split_index       += (n - column_index - 1);
++                }
+             }
+         }
+     }
