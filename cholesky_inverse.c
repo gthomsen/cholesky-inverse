@@ -69,7 +69,7 @@ extern void dpotrf_( char *uplo, int *n, double* a, int *lda, int *info );
 extern void cpotrf_( char *uplo, int *n, float* a, int *lda, int *info );
 extern void zpotrf_( char *uplo, int *n, double* a, int *lda, int *info );
 
-/* Inversion using a Cholesky factorization. */
+/* inversion using a Cholesky factorization. */
 extern void spotri_( char *uplo, int *n, float* a, int *lda, int *info );
 extern void dpotri_( char *uplo, int *n, double* a, int *lda, int *info );
 extern void cpotri_( char *uplo, int *n, float* a, int *lda, int *info );
@@ -722,7 +722,7 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
     void *interleaved_buffer = NULL;
 
 
-    /* Check for proper number of input and output arguments */
+    /* check for proper number of input and output arguments. */
     validate_inputs( nrhs, prhs );
     validate_outputs( nlhs, plhs );
 
