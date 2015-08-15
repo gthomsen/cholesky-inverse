@@ -92,6 +92,9 @@ extern void zpotri_( char *uplo, int *n, double* a, int *lda, int *info );
 #include "lapack.h"
 #endif
 
+/* copies the contents of the split buffers' into the interleaved buffer,
+   performing data type conversion if the source and destination data types
+   differ.  real matrix are represented by a NULL imaginary_buffer. */
 void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
                                 const void * __restrict__ real_buffer,
                                 const void * __restrict__ imaginary_buffer,
@@ -214,6 +217,11 @@ void copy_split_to_interleaved( void * __restrict__ interleaved_buffer,
     }
 }
 
+/* copies the contents of the interleaved buffer's upper triangle into the
+   split buffers performing data type conversion if the source and destination
+   data types differ.  each split buffer provided has both upper and lower
+   triangles filled with the appropriate values.  real matrix are represented
+   by a NULL imaginary_buffer. */
 void copy_interleaved_to_split( void * __restrict__ real_buffer,
                                 void * __restrict__ imaginary_buffer,
                                 const void * __restrict__ interleaved_buffer,
@@ -229,9 +237,8 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
     int mirror_index  = 0;
 
     /* linear index into the column-major real/imaginary buffers from the
-       input matrix. */
-    /* XXX: rename this */
-    int real_index    = 0;
+       output matrix. */
+    int split_index    = 0;
 
     /* row/column indices used to iterate through the matrix we're copying
        and (conjugate) transposing. */
@@ -257,19 +264,19 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
                     /* upper triangle -> copy */
                     for( row_index = 0;
                          row_index < column_index;
-                         row_index++, element_index += 2, mirror_index += n * 2, real_index++ )
+                         row_index++, element_index += 2, mirror_index += n * 2, split_index++ )
                     {
-                        real[real_index]      = interleaved[element_index];
-                        imaginary[real_index] = interleaved[element_index + 1];
+                        real[split_index]      = interleaved[element_index];
+                        imaginary[split_index] = interleaved[element_index + 1];
                     }
 
                     /* lower triangle -> conjugate transpose */
                     for( ;
                          row_index < n;
-                         row_index++, element_index += 2, mirror_index += n * 2, real_index++ )
+                         row_index++, element_index += 2, mirror_index += n * 2, split_index++ )
                     {
-                        real[real_index]      =  interleaved[mirror_index];
-                        imaginary[real_index] = -interleaved[mirror_index + 1];
+                        real[split_index]      =  interleaved[mirror_index];
+                        imaginary[split_index] = -interleaved[mirror_index + 1];
                     }
                 }
             }
@@ -287,19 +294,19 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
                     /* upper triangle -> copy */
                     for( row_index = 0;
                          row_index < column_index;
-                         row_index++, element_index += 2, mirror_index += n * 2, real_index++ )
+                         row_index++, element_index += 2, mirror_index += n * 2, split_index++ )
                     {
-                        real[real_index]      = interleaved[element_index];
-                        imaginary[real_index] = interleaved[element_index + 1];
+                        real[split_index]      = interleaved[element_index];
+                        imaginary[split_index] = interleaved[element_index + 1];
                     }
 
                     /* lower triangle -> conjugate transpose */
                     for( ;
                          row_index < n;
-                         row_index++, element_index += 2, mirror_index += n * 2, real_index++ )
+                         row_index++, element_index += 2, mirror_index += n * 2, split_index++ )
                     {
-                        real[real_index]      =  interleaved[mirror_index];
-                        imaginary[real_index] = -interleaved[mirror_index + 1];
+                        real[split_index]      =  interleaved[mirror_index];
+                        imaginary[split_index] = -interleaved[mirror_index + 1];
                     }
                 }
             }
@@ -319,14 +326,14 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
                     /* upper triangle -> copy */
                     for( row_index = 0;
                          row_index < column_index;
-                         row_index++, element_index++, mirror_index += n, real_index++ )
-                        real[real_index] = interleaved[element_index];
+                         row_index++, element_index++, mirror_index += n, split_index++ )
+                        real[split_index] = interleaved[element_index];
 
                     /* lower triangle -> transpose */
                     for( ;
                          row_index < n;
-                         row_index++, element_index++, mirror_index += n, real_index++ )
-                        real[real_index] = interleaved[mirror_index];
+                         row_index++, element_index++, mirror_index += n, split_index++ )
+                        real[split_index] = interleaved[mirror_index];
                 }
             }
             else
@@ -342,14 +349,14 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
                     /* upper triangle -> copy */
                     for( row_index = 0;
                          row_index < column_index;
-                         row_index++, element_index++, mirror_index += n, real_index++ )
-                        real[real_index] = interleaved[element_index];
+                         row_index++, element_index++, mirror_index += n, split_index++ )
+                        real[split_index] = interleaved[element_index];
 
                     /* lower triangle -> transpose */
                     for( ;
                          row_index < n;
-                         row_index++, element_index++, mirror_index += n, real_index++ )
-                        real[real_index] = interleaved[mirror_index];
+                         row_index++, element_index++, mirror_index += n, split_index++ )
+                        real[split_index] = interleaved[mirror_index];
                 }
             }
         }
@@ -374,19 +381,19 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
                     /* upper triangle -> copy */
                     for( row_index = 0;
                          row_index < column_index;
-                         row_index++, element_index += 2, mirror_index += 2 * n, real_index++ )
+                         row_index++, element_index += 2, mirror_index += 2 * n, split_index++ )
                     {
-                        real[real_index]      = interleaved[element_index];
-                        imaginary[real_index] = interleaved[element_index + 1];
+                        real[split_index]      = interleaved[element_index];
+                        imaginary[split_index] = interleaved[element_index + 1];
                     }
 
                     /* lower triangle -> conjugate transpose */
                     for( ;
                          row_index < n;
-                         row_index++, element_index += 2, mirror_index += 2 * n, real_index++ )
+                         row_index++, element_index += 2, mirror_index += 2 * n, split_index++ )
                     {
-                        real[real_index]      =  interleaved[mirror_index];
-                        imaginary[real_index] = -interleaved[mirror_index + 1];
+                        real[split_index]      =  interleaved[mirror_index];
+                        imaginary[split_index] = -interleaved[mirror_index + 1];
                     }
                 }
             }
@@ -404,19 +411,19 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
                     /* upper triangle -> copy */
                     for( row_index = 0;
                          row_index < column_index;
-                         row_index++, element_index += 2, mirror_index += n * 2, real_index++ )
+                         row_index++, element_index += 2, mirror_index += n * 2, split_index++ )
                     {
-                        real[real_index]      = interleaved[element_index];
-                        imaginary[real_index] = interleaved[element_index + 1];
+                        real[split_index]      = interleaved[element_index];
+                        imaginary[split_index] = interleaved[element_index + 1];
                     }
 
                     /* lower triangle -> conjugate transpose */
                     for( ;
                          row_index < n;
-                         row_index++, element_index += 2, mirror_index += n * 2, real_index++ )
+                         row_index++, element_index += 2, mirror_index += n * 2, split_index++ )
                     {
-                        real[real_index]      =  interleaved[mirror_index];
-                        imaginary[real_index] = -interleaved[mirror_index + 1];
+                        real[split_index]      =  interleaved[mirror_index];
+                        imaginary[split_index] = -interleaved[mirror_index + 1];
                     }
                 }
             }
@@ -436,14 +443,14 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
                     /* upper triangle -> copy */
                     for( row_index = 0;
                          row_index < column_index;
-                         row_index++, element_index++, mirror_index += n, real_index++ )
-                        real[real_index] = interleaved[element_index];
+                         row_index++, element_index++, mirror_index += n, split_index++ )
+                        real[split_index] = interleaved[element_index];
 
                     /* lower triangle -> transpose */
                     for( ;
                          row_index < n;
-                         row_index++, element_index++, mirror_index += n, real_index++ )
-                        real[real_index] = interleaved[mirror_index];
+                         row_index++, element_index++, mirror_index += n, split_index++ )
+                        real[split_index] = interleaved[mirror_index];
                 }
             }
             else
@@ -459,21 +466,27 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
                     /* upper triangle -> copy */
                     for( row_index = 0;
                          row_index < column_index;
-                         row_index++, element_index++, mirror_index += n, real_index++ )
-                        real[real_index] = interleaved[element_index];
+                         row_index++, element_index++, mirror_index += n, split_index++ )
+                        real[split_index] = interleaved[element_index];
 
                     /* lower triangle -> transpose */
                     for( ;
                          row_index < n;
-                         row_index++, element_index++, mirror_index += n, real_index++ )
-                        real[real_index] = interleaved[mirror_index];
+                         row_index++, element_index++, mirror_index += n, split_index++ )
+                        real[split_index] = interleaved[mirror_index];
                 }
             }
         }
     }
 }
 
-void invert_matrix( void *matrix_buffer, int N, mxClassID computation_class, int complexity_flag )
+/* inverts the positive definite matrix supplied in place.  on return the
+   buffer contains the upper triangle of the matrix's inverse, and the
+   strictly lower triangle (minus the diagonal) contains the original matrix.
+   if the matrix supplied isn't positive definite, throws an error and returns
+   control to the interpreter. */
+void invert_matrix( void *interleaved_buffer, int N,
+                    mxClassID computation_class, int complexity_flag )
 {
     /* dimension of the matrix and status variable for the LAPACK calls. */
 #ifdef HAVE_OCTAVE
@@ -488,9 +501,6 @@ void invert_matrix( void *matrix_buffer, int N, mxClassID computation_class, int
        matrix. */
     char uplo = 'U';
 
-    if( computation_class == mxUNKNOWN_CLASS )
-        return;
-
     /* do the Cholesky factorization based on the data type and complexity.
        throw an error indicating that the matrix being inverted isn't positive
        definite if LAPACK concludes that. */
@@ -498,13 +508,13 @@ void invert_matrix( void *matrix_buffer, int N, mxClassID computation_class, int
     {
         /* factor */
         if( complexity_flag )
-            zpotrf( &uplo, &n, matrix_buffer, &n, &lapack_status );
+            zpotrf( &uplo, &n, interleaved_buffer, &n, &lapack_status );
         else
-            dpotrf( &uplo, &n, matrix_buffer, &n, &lapack_status );
+            dpotrf( &uplo, &n, interleaved_buffer, &n, &lapack_status );
 
         if( lapack_status != 0 )
         {
-            mxFree( matrix_buffer );
+            mxFree( interleaved_buffer );
             mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:lapack",
                                "Failed to factorize X (%d).",
                                lapack_status );
@@ -512,28 +522,28 @@ void invert_matrix( void *matrix_buffer, int N, mxClassID computation_class, int
 
         /* invert */
         if( complexity_flag )
-            zpotri( &uplo, &n, matrix_buffer, &n, &lapack_status );
+            zpotri( &uplo, &n, interleaved_buffer, &n, &lapack_status );
         else
-            dpotri( &uplo, &n, matrix_buffer, &n, &lapack_status );
+            dpotri( &uplo, &n, interleaved_buffer, &n, &lapack_status );
 
         if( lapack_status != 0 )
         {
-            mxFree( matrix_buffer );
+            mxFree( interleaved_buffer );
             mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:lapack",
                                "Failed to invert X (%d).",
                                lapack_status );
         }
     }
-    else
+    else if( computation_class == mxSINGLE_CLASS )
     {
         if( complexity_flag )
-            cpotrf( &uplo, &n, matrix_buffer, &n, &lapack_status );
+            cpotrf( &uplo, &n, interleaved_buffer, &n, &lapack_status );
         else
-            spotrf( &uplo, &n, matrix_buffer, &n, &lapack_status );
+            spotrf( &uplo, &n, interleaved_buffer, &n, &lapack_status );
 
         if( lapack_status != 0 )
         {
-            mxFree( matrix_buffer );
+            mxFree( interleaved_buffer );
             mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:lapack",
                                "Failed to factorize X (%d).",
                                lapack_status );
@@ -541,13 +551,13 @@ void invert_matrix( void *matrix_buffer, int N, mxClassID computation_class, int
 
         /* invert */
         if( complexity_flag )
-            cpotri( &uplo, &n, matrix_buffer, &n, &lapack_status );
+            cpotri( &uplo, &n, interleaved_buffer, &n, &lapack_status );
         else
-            spotri( &uplo, &n, matrix_buffer, &n, &lapack_status );
+            spotri( &uplo, &n, interleaved_buffer, &n, &lapack_status );
 
         if( lapack_status != 0 )
         {
-            mxFree( matrix_buffer );
+            mxFree( interleaved_buffer );
             mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:lapack",
                                "Failed to invert X (%d).",
                                lapack_status );
@@ -557,47 +567,15 @@ void invert_matrix( void *matrix_buffer, int N, mxClassID computation_class, int
     return;
 }
 
-void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
+/* validates the input arguments requested of the MEX object.  if there aren't
+   one or two input arguments, or if they aren't of floating point and string
+   data types, respectively, this routine throws and error and returns control
+   to the interpreter. */
+void validate_inputs( int nrhs, const mxArray *prhs[] )
 {
-    int       n            = 0;
-    int       complexity_flag = 0;
-
-    mxClassID computation_class = mxUNKNOWN_CLASS;
-
-    size_t matrix_size = 0;
-
-    /* holds the dimensions of the matrix being inverted. */
-    const mwSize *input_dimensions = NULL;
-
-    /* dimensions of the inverse we return.  the MEX interface has changed and
-       Octave does not yet support the newest version (2015a) as of
-       2015/08/14. */
-#ifdef HAVE_OCTAVE
-    mwSize output_dimensions[2];
-#else
-    size_t output_dimensions[2];
-#endif
-
-    /* pointer to the inverted matrix returned by invert_matrix(). */
-    void *inverted_matrix = NULL;
-
-    /* Check for proper number of input and output arguments */
     if( nrhs < 1 || nrhs > 2 )
         mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:invalidNumInputs",
                            "Either one or two input arguments required." );
-
-    if( nlhs > 1 )
-        mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:maxlhs",
-                           "Too many output arguments.  No more than one may be requested." );
-
-    /* get the dimension of X and verify that X is square. */
-    n = mxGetM( prhs[INPUT_X_INDEX] );
-    if( n != mxGetN( prhs[INPUT_X_INDEX] ) )
-        mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:invalidInput",
-                           "X must be square." );
-
-    /* get the class and complexity of X */
-    complexity_flag = mxIsComplex( prhs[INPUT_X_INDEX] );
 
     /* verify that X is either single or double precision so we can simplify
        our lives. */
@@ -611,47 +589,167 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
                            "X must be either single or double precision." );
     }
 
-    /* get the precision requested for the output, default to the class of X */
-    if( nrhs == 2 )
-    {
-        char precision_string[128];
+    if( nrhs == 2 && mxCHAR_CLASS != mxGetClassID( prhs[INPUT_PRECISION_INDEX] ) )
+        mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:invalidInput",
+                           "precision must be a string." );
 
-        if( 0 != mxGetString( prhs[INPUT_PRECISION_INDEX],
-                              precision_string,
-                              sizeof( precision_string ) ) )
-            mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:invalidPrecisionType",
-                               "Failed to acquire the precision argument as a string." );
+    return;
+}
 
-        if( 0 == strcmp( precision_string, PRECISION_DOUBLE_STR ) ||
-            0 == strcmp( precision_string, PRECISION_FLOAT64_STR ) )
-            computation_class = mxDOUBLE_CLASS;
-        else if( 0 == strcmp( precision_string, PRECISION_SINGLE_STR ) ||
-                 0 == strcmp( precision_string, PRECISION_FLOAT32_STR ) )
-            computation_class = mxSINGLE_CLASS;
-        else
-            mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:invalidPrecisionType",
-                               "Precision string must be one of '" PRECISION_DOUBLE_STR "', '"
-                                PRECISION_FLOAT64_STR "', '" PRECISION_SINGLE_STR "', '"
-                                PRECISION_FLOAT32_STR "'." );
-    }
+/* validates the output values requested of the MEX object.  if there is
+   more than one output value requested, this routine throws and error and
+   returns control to the interpreter. */
+void validate_outputs( int nlhs, mxArray *plhs[] )
+{
+    if( nlhs > 1 )
+        mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:maxlhs",
+                           "Too many output arguments.  No more than one may be requested." );
+
+    return;
+}
+
+/* takes a MATLAB matrix containing a string specifying the data type the
+   matrix inversion should be performed in.  throws an error and returns
+   control to the interpreter if the precision string isn't a string or
+   valid. */
+mxClassID get_computation_class( const mxArray *precision_array )
+{
+    char precision_string[128];
+
+    /* acquire the precision string and determine whether it represents either
+       single or double precision. */
+    if( 0 != mxGetString( precision_array,
+                          precision_string,
+                          sizeof( precision_string ) ) )
+        mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:invalidPrecisionType",
+                           "Failed to acquire the precision argument as a string." );
+
+    if( 0 == strcmp( precision_string, PRECISION_DOUBLE_STR ) ||
+        0 == strcmp( precision_string, PRECISION_FLOAT64_STR ) )
+        return mxDOUBLE_CLASS;
+    else if( 0 == strcmp( precision_string, PRECISION_SINGLE_STR ) ||
+             0 == strcmp( precision_string, PRECISION_FLOAT32_STR ) )
+        return mxSINGLE_CLASS;
     else
-        /* the user didn't specify a precision to do the computations in, so
-           do them in the same precision the data are. */
+        mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:invalidPrecisionType",
+                           "Precision string must be one of '" PRECISION_DOUBLE_STR "', '"
+                           PRECISION_FLOAT64_STR "', '" PRECISION_SINGLE_STR "', '"
+                           PRECISION_FLOAT32_STR "'." );
+
+    return mxUNKNOWN_CLASS;
+}
+
+/* allocates a buffer large enough to hold the interleaved data of the matrix
+   we're inverting in the precision requested for computation.  throws an
+   error and returns control to the interpreter if the buffer cannot be
+   allocated. */
+void *allocate_interleaved_buffer( int n, int complexity_flag,
+                                   mxClassID computation_class )
+{
+    size_t matrix_size = (n * n *
+                          (complexity_flag ? 2 : 1) *
+                          (computation_class == mxDOUBLE_CLASS ?
+                           sizeof( double ) : sizeof( float )));
+
+    void *interleaved_buffer = NULL;
+
+    if( NULL == (interleaved_buffer = mxMalloc( matrix_size )) )
+        mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:memoryAllocation",
+                           "Failed to allocate %lu byte%s for the inversion buffer.",
+                           matrix_size,
+                           matrix_size == 1 ? "" : "s" );
+
+    return interleaved_buffer;
+}
+
+/* allocates a MATLAB matrix to hold the matrix inverse we're computing.  the
+   size, class, and complexity of the new matrix matches the matrix supplied.
+   care is taken to avoid unnecessary initialization if the interpreter we're
+   building for supports it.  throws an error and returns control to the
+   interpreter if the buffer cannot be allocated.*/
+mxArray *allocate_inversion_array( const mxArray *matrix )
+{
+    mxArray *inverted_matrix = NULL;
+
+    /* holds the dimensions of the matrix being inverted. */
+    const mwSize *input_dimensions = NULL;
+
+    /* dimensions of the inverse we return.  the MEX interface has changed and
+       Octave does not yet support the newest version (2015a) as of
+       2015/08/14. */
+#ifdef HAVE_OCTAVE
+    mwSize output_dimensions[2];
+#else
+    size_t output_dimensions[2];
+#endif
+
+    /* allocate the output variable with the user specified precision and X's
+       complexity.  since we'll immediately copy our interleaved matrix into
+       this variable's buffer(s), we request uninitialized data when
+       possible. */
+    input_dimensions     = mxGetDimensions( matrix );
+    output_dimensions[0] = input_dimensions[0];
+    output_dimensions[1] = input_dimensions[1];
+
+#ifdef HAVE_OCTAVE
+    if( NULL == (inverted_matrix = mxCreateNumericArray(       2,
+#else
+    if( NULL == (inverted_matrix = mxCreateUninitNumericArray( 2,
+#endif
+                                                               output_dimensions,
+                                                               mxGetClassID( matrix ),
+                                                               (mxIsComplex( matrix ) ? mxCOMPLEX : mxREAL) )) )
+        mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:memoryAllocation",
+                           "Failed to allocate the output inverse matrix." );
+
+    return inverted_matrix;
+}
+
+void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
+{
+    /* size of the positive definite matrix we're inverting. */
+    int n = 0;
+
+    /* flag indicating whether the input matrix is complex (Hermitian) or real
+       (symmetric). */
+    int complexity_flag = 0;
+
+    /* class identifier determining which precision we perform the inversion
+       in.  this governs the data types in the copies as well. */
+    mxClassID computation_class = mxUNKNOWN_CLASS;
+
+    /* pointer to the inverted matrix returned by invert_matrix(). */
+    void *interleaved_buffer = NULL;
+
+
+    /* Check for proper number of input and output arguments */
+    validate_inputs( nrhs, prhs );
+    validate_outputs( nlhs, plhs );
+
+    /* get the dimension of X and verify that X is square. */
+    n = mxGetM( prhs[INPUT_X_INDEX] );
+    if( n != mxGetN( prhs[INPUT_X_INDEX] ) )
+        mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:invalidInput",
+                           "X must be square." );
+
+    /* get the class and complexity of X */
+    complexity_flag = mxIsComplex( prhs[INPUT_X_INDEX] );
+
+    /* if the user specified a precision to do our inversion in, get that.
+       otherwise default to the precision of the matrix being inverted. */
+    if( nrhs == 2 )
+        computation_class = get_computation_class( prhs[INPUT_PRECISION_INDEX] );
+    else
         computation_class = mxGetClassID( prhs[INPUT_X_INDEX] );
 
     /* allocate a buffer for the inversion. */
-    matrix_size = (n * n *
-                   (complexity_flag ? 2 : 1) *
-                   (computation_class == mxDOUBLE_CLASS ? sizeof( double ) : sizeof( float )));
-    if( NULL == (inverted_matrix = mxMalloc( matrix_size )) )
-        mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:memoryAllocation",
-                           "Failed to allocate %lu bytes for the inversion buffer.",
-                           matrix_size );
+    interleaved_buffer = allocate_interleaved_buffer( n, complexity_flag,
+                                                      computation_class );
 
     /* create an interleaved buffer of the appropriate data type allows us to
        use it with LAPACK.  this properly handles input matrices that are
        either real or complex. */
-    copy_split_to_interleaved( inverted_matrix,
+    copy_split_to_interleaved( interleaved_buffer,
                                mxGetPr( prhs[INPUT_X_INDEX] ),
                                mxGetPi( prhs[INPUT_X_INDEX] ),
                                n * n,
@@ -659,47 +757,30 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
                                computation_class );
 
     /* invert the matrix. */
-    invert_matrix( inverted_matrix, n, computation_class, complexity_flag );
+    invert_matrix( interleaved_buffer, n, computation_class, complexity_flag );
 
     /* if the user didn't want the output, return now. */
     if( nlhs < 1 )
     {
-        mxFree( inverted_matrix );
+        mxFree( interleaved_buffer );
         return;
     }
 
-    /* allocate the output variable with the user specified precision and X's
-       complexity.  since we'll immediately copy our interleaved matrix into
-       this variable's buffer(s), we request uninitialized data when
-       possible. */
-    input_dimensions     = mxGetDimensions( prhs[INPUT_X_INDEX] );
-    output_dimensions[0] = input_dimensions[0];
-    output_dimensions[1] = input_dimensions[1];
-
-#ifdef HAVE_OCTAVE
-    if( NULL == (plhs[OUTPUT_X_INV_INDEX] = mxCreateNumericArray(       2,
-#else
-    if( NULL == (plhs[OUTPUT_X_INV_INDEX] = mxCreateUninitNumericArray( 2,
-#endif
-                                                                        output_dimensions,
-                                                                        mxGetClassID( prhs[INPUT_X_INDEX] ),
-                                                                        (complexity_flag ? mxCOMPLEX : mxREAL) )) )
-    {
-        mxFree( inverted_matrix );
-        mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:memoryAllocation",
-                           "Failed to allocate the output inverse matrix." );
-    }
+    /* allocate our output matrix. */
+    plhs[OUTPUT_X_INV_INDEX] = allocate_inversion_array( prhs[INPUT_X_INDEX] );
 
     /* copy the data from contiguous to interleaved.  this properly handles
        mirroring the data from upper triangular to full matrix as well. */
     copy_interleaved_to_split( mxGetPr( plhs[OUTPUT_X_INV_INDEX] ),
                                mxGetPi( plhs[OUTPUT_X_INV_INDEX] ),
-                               inverted_matrix,
+                               interleaved_buffer,
                                mxGetM( plhs[OUTPUT_X_INV_INDEX] ),
                                computation_class,
                                mxGetClassID( plhs[OUTPUT_X_INV_INDEX] ) );
 
-    mxFree( inverted_matrix );
+    /* deallocate our intermediate buffer so that the interpreter doesn't have
+       to garbage collect it. */
+    mxFree( interleaved_buffer );
 
     return;
 }
