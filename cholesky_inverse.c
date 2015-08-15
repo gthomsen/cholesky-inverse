@@ -473,52 +473,23 @@ void copy_interleaved_to_split( void * __restrict__ real_buffer,
     }
 }
 
-void *invert_matrix( const mxArray *X, mxClassID computation_class )
+void invert_matrix( void *matrix_buffer, int N, mxClassID computation_class, int complexity_flag )
 {
-    size_t  matrix_size     = 0;
-    void   *matrix_buffer   = NULL;
-
     /* dimension of the matrix and status variable for the LAPACK calls. */
 #ifdef HAVE_OCTAVE
-    int     n               = 0;
+    int     n               = N;
     int     lapack_status   = 0;
 #else  /* MATLAB */
-    ptrdiff_t n             = 0;
+    ptrdiff_t n             = N;
     ptrdiff_t lapack_status = 0;
 #endif
-
-    /* complexity of our input argument. */
-    int is_complex_flag = 0;
 
     /* our factorization operates on the upper triangular portion of the
        matrix. */
     char uplo = 'U';
 
-    if( X == NULL || computation_class == mxUNKNOWN_CLASS )
-        return NULL;
-
-    /* get the dimension and complexity of our input matrix. */
-    n               = mxGetM( X );
-    is_complex_flag = mxIsComplex( X );
-
-    /* allocate a buffer for the inversion. */
-    matrix_size = (n * n *
-                   (is_complex_flag ? 2 : 1) *
-                   (computation_class == mxDOUBLE_CLASS ? sizeof( double ) : sizeof( float )));
-    if( NULL == (matrix_buffer = mxMalloc( matrix_size )) )
-        mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:memoryAllocation",
-                           "Failed to allocate %lu bytes for the inversion buffer.",
-                           matrix_size );
-
-    /* create an interleaved buffer of the appropriate data type allows us to
-       use it with LAPACK.  this properly handles input matrices that are
-       either real or complex. */
-    copy_split_to_interleaved( matrix_buffer,
-                               mxGetPr( X ),
-                               mxGetPi( X ),
-                               n * n,
-                               mxGetClassID( X ),
-                               computation_class );
+    if( computation_class == mxUNKNOWN_CLASS )
+        return;
 
     /* do the Cholesky factorization based on the data type and complexity.
        throw an error indicating that the matrix being inverted isn't positive
@@ -526,7 +497,7 @@ void *invert_matrix( const mxArray *X, mxClassID computation_class )
     if( computation_class == mxDOUBLE_CLASS )
     {
         /* factor */
-        if( is_complex_flag )
+        if( complexity_flag )
             zpotrf( &uplo, &n, matrix_buffer, &n, &lapack_status );
         else
             dpotrf( &uplo, &n, matrix_buffer, &n, &lapack_status );
@@ -540,7 +511,7 @@ void *invert_matrix( const mxArray *X, mxClassID computation_class )
         }
 
         /* invert */
-        if( is_complex_flag )
+        if( complexity_flag )
             zpotri( &uplo, &n, matrix_buffer, &n, &lapack_status );
         else
             dpotri( &uplo, &n, matrix_buffer, &n, &lapack_status );
@@ -555,7 +526,7 @@ void *invert_matrix( const mxArray *X, mxClassID computation_class )
     }
     else
     {
-        if( is_complex_flag )
+        if( complexity_flag )
             cpotrf( &uplo, &n, matrix_buffer, &n, &lapack_status );
         else
             spotrf( &uplo, &n, matrix_buffer, &n, &lapack_status );
@@ -569,7 +540,7 @@ void *invert_matrix( const mxArray *X, mxClassID computation_class )
         }
 
         /* invert */
-        if( is_complex_flag )
+        if( complexity_flag )
             cpotri( &uplo, &n, matrix_buffer, &n, &lapack_status );
         else
             spotri( &uplo, &n, matrix_buffer, &n, &lapack_status );
@@ -583,37 +554,17 @@ void *invert_matrix( const mxArray *X, mxClassID computation_class )
         }
     }
 
-    return matrix_buffer;
-}
-
-/* XXX: remove copy matrix and put the copy in the main MEX object.  factor the
-        other copy out of the inverse. */
-void copy_matrix( mxArray *X_inv, void *inverted_matrix, mxClassID computation_class )
-{
-    if( X_inv == NULL || inverted_matrix == NULL ||
-        !(computation_class == mxDOUBLE_CLASS ||
-          computation_class == mxSINGLE_CLASS) )
-        return;
-
-    /* copy the data from contiguous to interleaved.  this properly handles
-       mirroring the data from upper triangular to full matrix as well. */
-    copy_interleaved_to_split( mxGetPr( X_inv ),
-                               mxGetPi( X_inv ),
-                               inverted_matrix,
-                               mxGetM( X_inv ),
-                               computation_class,
-                               mxGetClassID( X_inv ) );
-
     return;
 }
 
 void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
 {
     int       n            = 0;
-    int       X_is_complex = 0;
+    int       complexity_flag = 0;
 
-    mxClassID X_class           = mxUNKNOWN_CLASS;
     mxClassID computation_class = mxUNKNOWN_CLASS;
+
+    size_t matrix_size = 0;
 
     /* holds the dimensions of the matrix being inverted. */
     const mwSize *input_dimensions = NULL;
@@ -646,12 +597,11 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
                            "X must be square." );
 
     /* get the class and complexity of X */
-    X_class      = mxGetClassID( prhs[INPUT_X_INDEX] );
-    X_is_complex = mxIsComplex( prhs[INPUT_X_INDEX] );
+    complexity_flag = mxIsComplex( prhs[INPUT_X_INDEX] );
 
     /* verify that X is either single or double precision so we can simplify
        our lives. */
-    switch( X_class )
+    switch( mxGetClassID( prhs[INPUT_X_INDEX] ) )
     {
     case mxDOUBLE_CLASS:
     case mxSINGLE_CLASS:
@@ -687,14 +637,29 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
     else
         /* the user didn't specify a precision to do the computations in, so
            do them in the same precision the data are. */
-        computation_class = X_class;
+        computation_class = mxGetClassID( prhs[INPUT_X_INDEX] );
 
-    if( NULL == (inverted_matrix = invert_matrix( prhs[INPUT_X_INDEX], computation_class )) )
-    {
-        mexWarnMsgIdAndTxt( "MATLAB:cholesky_inverse:warning",
-                            "Failed to invert the matrix." );
-        return;
-    }
+    /* allocate a buffer for the inversion. */
+    matrix_size = (n * n *
+                   (complexity_flag ? 2 : 1) *
+                   (computation_class == mxDOUBLE_CLASS ? sizeof( double ) : sizeof( float )));
+    if( NULL == (inverted_matrix = mxMalloc( matrix_size )) )
+        mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:memoryAllocation",
+                           "Failed to allocate %lu bytes for the inversion buffer.",
+                           matrix_size );
+
+    /* create an interleaved buffer of the appropriate data type allows us to
+       use it with LAPACK.  this properly handles input matrices that are
+       either real or complex. */
+    copy_split_to_interleaved( inverted_matrix,
+                               mxGetPr( prhs[INPUT_X_INDEX] ),
+                               mxGetPi( prhs[INPUT_X_INDEX] ),
+                               n * n,
+                               mxGetClassID( prhs[INPUT_X_INDEX] ),
+                               computation_class );
+
+    /* invert the matrix. */
+    invert_matrix( inverted_matrix, n, computation_class, complexity_flag );
 
     /* if the user didn't want the output, return now. */
     if( nlhs < 1 )
@@ -717,16 +682,22 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
     if( NULL == (plhs[OUTPUT_X_INV_INDEX] = mxCreateUninitNumericArray( 2,
 #endif
                                                                         output_dimensions,
-                                                                        X_class,
-                                                                        (X_is_complex ? mxCOMPLEX : mxREAL) )) )
+                                                                        mxGetClassID( prhs[INPUT_X_INDEX] ),
+                                                                        (complexity_flag ? mxCOMPLEX : mxREAL) )) )
     {
         mxFree( inverted_matrix );
         mexErrMsgIdAndTxt( "MATLAB:cholesky_inverse:memoryAllocation",
                            "Failed to allocate the output inverse matrix." );
     }
 
-    /* copy the interleaved matrix into the return argument. */
-    copy_matrix( plhs[OUTPUT_X_INV_INDEX], inverted_matrix, computation_class );
+    /* copy the data from contiguous to interleaved.  this properly handles
+       mirroring the data from upper triangular to full matrix as well. */
+    copy_interleaved_to_split( mxGetPr( plhs[OUTPUT_X_INV_INDEX] ),
+                               mxGetPi( plhs[OUTPUT_X_INV_INDEX] ),
+                               inverted_matrix,
+                               mxGetM( plhs[OUTPUT_X_INV_INDEX] ),
+                               computation_class,
+                               mxGetClassID( plhs[OUTPUT_X_INV_INDEX] ) );
 
     mxFree( inverted_matrix );
 
